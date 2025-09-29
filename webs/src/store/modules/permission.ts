@@ -25,7 +25,8 @@ const hasPermission = (roles: string[], route: RouteRecordRaw) => {
       }
     });
   }
-  return false;
+  // 如果路由没有设置roles，默认允许访问
+  return true;
 };
 
 /**

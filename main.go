@@ -11,6 +11,7 @@ import (
 	"sublink/middlewares"
 	"sublink/models"
 	"sublink/routers"
+	"sublink/services"
 	"sublink/settings"
 	"sublink/utils"
 
@@ -124,6 +125,12 @@ func Run(port int) {
 	utils.Loginit()
 	// 初始化模板
 	Templateinit()
+
+	// 启动订阅自动更新服务
+	subscriptionService := services.NewSubscriptionService()
+	// subscriptionService.StartAutoUpdate(30 * time.Minute)
+	defer subscriptionService.StopAutoUpdate()
+
 	// 安装中间件
 	r.Use(middlewares.AuthorToken) // jwt验证token
 	// 设置静态资源路径
@@ -150,6 +157,7 @@ func Run(port int) {
 	routers.Clients(r)
 	routers.Total(r)
 	routers.Templates(r)
+	routers.ExternalSubscription(r)
 	routers.Version(r, version)
 	// 启动服务
 	r.Run(fmt.Sprintf("0.0.0.0:%d", port))

@@ -40,6 +40,14 @@ const tableRefs = ref<{ [key: string]: any }>({}); // Stores references to each 
 // const NodeNewNameInput = ref("")
 const NodeGroupInput = ref("")
 const tableData = ref<Node[]>([])
+
+// 分页相关数据
+const pagination = ref({
+  currentPage: 1,
+  pageSize: 20,
+  total: 0,
+  totalPages: 0
+})
 // 分组列表临时存放数据
 const tableDataTemp = ref<Node[]>([])
 // 分组列表临时存放数据
@@ -77,13 +85,48 @@ function ClearInput() {
   
 }
 async function getnodes() {
-  const {data} = await getNodes();
-  if (data.length > 0) tableDataTemp.value = tableData.value = data
-  allNodes.value = []; // 清空 allNodes 数组
-  data.forEach((item:any) => {
-      allNodes.value.push(item.Name); // 将所有节点添加到 allNodes 中
+  const response = await getNodes({
+    page: pagination.value.currentPage,
+    pageSize: pagination.value.pageSize
   });
-  
+
+  // 处理返回的数据 - response 是 axios 响应，实际数据在 response.data 中
+  const result = response as any;
+
+  // 处理节点数据
+  if (result.data) {
+    tableData.value = result.data;
+    tableDataTemp.value = result.data;
+  }
+
+  // 更新分页信息
+  if (result.total !== undefined) {
+    pagination.value.total = result.total;
+  }
+  if (result.totalPages !== undefined) {
+    pagination.value.totalPages = result.totalPages;
+  }
+
+  // 更新所有节点列表
+  allNodes.value = [];
+  if (result.data && Array.isArray(result.data)) {
+    result.data.forEach((item: any) => {
+      allNodes.value.push(item.Name);
+    });
+  }
+}
+
+// 处理分页改变
+const handlePageChange = (val: number) => {
+  pagination.value.currentPage = val;
+  getnodes();
+}
+
+// 处理每页显示条数改变
+const handleSizeChange = (val: number) => {
+  pagination.value.pageSize = val;
+  pagination.value.currentPage = 1; // 重置到第一页
+  getnodes();
 } 
 async function GetGroups() {
   const {data} = await GetGroup();
@@ -454,7 +497,7 @@ watch(activeName, (newVal) => {
   <!-- 显示表格数据 -->
   <el-card>
     <el-tabs v-model="activeName" >
-      <el-tab-pane :label="`全部(${allNodes.length})`" name="全部" />
+      <el-tab-pane :label="`全部(${pagination.total})`" name="全部" />
       <el-tab-pane :label="item" :name="item" v-for="item in allGroupNames" :key="item" />
     </el-tabs>
       <el-button type="primary" @click="handleAddNode">添加节点</el-button>
@@ -518,6 +561,18 @@ watch(activeName, (newVal) => {
             </el-table-column>
   </el-table>
    <div style="margin-top: 20px" />
+   <!-- 分页组件 -->
+   <el-pagination
+      v-model:current-page="pagination.currentPage"
+      v-model:page-size="pagination.pageSize"
+      :page-sizes="[10, 20, 50, 100]"
+      :total="pagination.total"
+      :background="true"
+      layout="total, sizes, prev, pager, next, jumper"
+      @size-change="handleSizeChange"
+      @current-change="handlePageChange"
+      style="margin-bottom: 20px"
+   />
    <el-button type="info" @click="selectAll">全选</el-button>
    <el-button type="warning" @click="selectClear">取消选中</el-button>
       <el-button type="primary" @click="selectCopy">复制选中</el-button>

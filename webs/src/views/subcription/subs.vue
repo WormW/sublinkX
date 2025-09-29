@@ -3,6 +3,7 @@ import { ref,onMounted  } from 'vue'
 import {getSubs,AddSub,DelSub,UpdateSub} from "@/api/subcription/subs"
 import {getTemp} from "@/api/subcription/temp"
 import {getNodes} from "@/api/subcription/node"
+import {getGroups, getNodesByGroup} from "@/api/subcription/group"
 import QrcodeVue from 'qrcode.vue'
 import md5 from 'md5'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -53,6 +54,8 @@ const iplogsdialog = ref(false)
 const IplogsList = ref<SubLogs[]>([])
 const qrcode = ref('')
 const templist = ref<Temp[]>([])
+const groupList = ref<any[]>([]) // 分组列表
+const selectedGroups = ref<number[]>([]) // 选中的分组ID
 async function getsubs() {
   const {data} = await getSubs();
     tableData.value = data
@@ -62,14 +65,62 @@ async function gettemps() {
     templist.value = data
     console.log(templist.value);
 }
+async function getGroupList() {
+  try {
+    const response = await getGroups();
+    const result = response as any;
+    if (result.code === '00000') {
+      groupList.value = result.data || [];
+    }
+  } catch (error) {
+    console.error('获取分组列表失败:', error);
+  }
+}
 onMounted(() => {
     getsubs()
     gettemps()
+    getGroupList()
 })
 onMounted(async() => {
     const {data} = await getNodes();
     NodesList.value = data
 })
+
+// 根据选中的分组加载节点
+const loadNodesByGroups = async () => {
+  if (selectedGroups.value.length === 0) {
+    return;
+  }
+
+  try {
+    const allGroupNodes: string[] = [];
+
+    for (const groupId of selectedGroups.value) {
+      const response = await getNodesByGroup(groupId);
+      const result = response as any;
+      if (result.code === '00000' && result.data) {
+        // 将分组中的节点名称添加到已选节点列表
+        result.data.forEach((node: Node) => {
+          if (!allGroupNodes.includes(node.Name)) {
+            allGroupNodes.push(node.Name);
+          }
+        });
+      }
+    }
+
+    // 合并分组节点到已选节点列表（去重）
+    allGroupNodes.forEach(nodeName => {
+      if (!value1.value.includes(nodeName)) {
+        value1.value.push(nodeName);
+      }
+    });
+
+    ElMessage.success(`已添加 ${allGroupNodes.length} 个节点`);
+  } catch (error) {
+    ElMessage.error('加载分组节点失败');
+    console.error('加载分组节点失败:', error);
+  }
+}
 
 
 const addSubs = async ()=>{
@@ -99,7 +150,9 @@ const addSubs = async ()=>{
     ElMessage.success("更新成功");
   }
 
-    dialogVisible.value = false;
+    dialogVisible.value = false
+  value1.value = [] // 清空已选节点
+  selectedGroups.value = [] // 清空已选分组;
 }
 
 const multipleSelection = ref<Sub[]>([])
@@ -138,6 +191,7 @@ const handleAddSub = ()=>{
   Surge.value = './template/surge.conf'
   dialogVisible.value = true
   value1.value = []
+  selectedGroups.value = [] // 清空已选分组
 }
 
 const handleEdit = (row:any) => {
@@ -164,6 +218,7 @@ const handleEdit = (row:any) => {
       Surge.value = config.surge
       dialogVisible.value = true
       value1.value = tableData.value[i].Nodes.map((item) => item.Name)
+      selectedGroups.value = [] // 清空已选分组
     }
   }
 }
@@ -377,6 +432,22 @@ const toggleSelect = (name: string) => {
   </el-checkbox-group>
 </el-row>
   <div class="m-4">
+    <p>选择分组（可选择多个分组的节点）</p>
+    <el-select
+      v-model="selectedGroups"
+      multiple
+      placeholder="请选择分组"
+      style="width: 100%; margin-bottom: 10px"
+      @change="loadNodesByGroups"
+    >
+      <el-option
+        v-for="group in groupList"
+        :key="group.id"
+        :label="`${group.name} (${group.nodeCount}个节点)`"
+        :value="group.id"
+      />
+    </el-select>
+
     <p>选择已有的节点列表</p>
     <el-select
       v-model="value1"

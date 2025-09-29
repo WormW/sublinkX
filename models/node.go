@@ -18,7 +18,8 @@ type Node struct {
 	gorm.Model
 	ID         int
 	Name       string
-	Link       string
+	Link       string      `gorm:"uniqueIndex"` // 添加唯一索引，防止重复
+	Config     string      `gorm:"type:text"` // 存储原始配置的JSON字符串
 	GroupNodes []GroupNode `gorm:"many2many:group_node_nodes"` // 反向关联字段
 }
 
@@ -114,15 +115,17 @@ func GetGroupNodeList() ([]GroupNode, error) {
 
 // 添加节点的方法
 func (n *Node) Add() error {
-	// 检查节点是否已存在
+	// 检查节点是否已存在（只根据链接判断）
 	var existingNode Node
-	result := DB.Model(n).Where("link = ? and name =?", n.Link, n.Name).First(&existingNode) // 查询数据库中是否存在同名同链接的节点
+	result := DB.Model(n).Where("link = ?", n.Link).First(&existingNode)
 	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return result.Error // 如果查询出错，返回错误
 	}
 	if result.RowsAffected > 0 {
-		// log.Println("节点已经存在")
-		return nil // 如果节点已经存在就跳过
+		// 节点已存在，更新名称和配置
+		existingNode.Name = n.Name
+		existingNode.Config = n.Config
+		return DB.Save(&existingNode).Error
 	}
 	return DB.Model(n).Create(n).Error // 使用 GORM 创建新的节点记录
 }
@@ -261,4 +264,32 @@ func GetNodeList() ([]Node, error) {
 		return nil, result.Error
 	}
 	return ns, result.Error
+}
+
+// GetNodeListWithPagination 获取分页的节点列表
+func GetNodeListWithPagination(page, pageSize int) ([]Node, int64, error) {
+	var ns []Node
+	var total int64
+
+	// 计算偏移量
+	offset := (page - 1) * pageSize
+
+	// 获取总数
+	if err := DB.Model(&Node{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 获取分页数据
+	result := DB.Model(&Node{}).
+		Preload("GroupNodes").
+		Limit(pageSize).
+		Offset(offset).
+		Order("id DESC").
+		Find(&ns)
+
+	if result.Error != nil {
+		return nil, 0, result.Error
+	}
+
+	return ns, total, nil
 }

@@ -9,6 +9,7 @@ export default {
     sublist:"Subscription List",
     subcription:"Subscription Management",
     templatelist:"Template List",
+    externalsubscription:"External Subscription",
   },
   // 登录页面国际化
   login: {

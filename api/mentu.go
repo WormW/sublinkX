@@ -119,6 +119,18 @@ func GetMenus(c *gin.Context) {
 						KeepAlive: true,
 					},
 				},
+				{
+					Path:      "external",
+					Component: "subcription/external",
+					Name:      "ExternalSubscription",
+					Meta: Meta{
+						Title:     "externalsubscription",
+						Icon:      "link",
+						Hidden:    false,
+						Roles:     []string{"ADMIN"},
+						KeepAlive: true,
+					},
+				},
 			},
 		},
 	}

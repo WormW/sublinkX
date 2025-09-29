@@ -1,15 +1,34 @@
-version: '3.8'  # 使用 Docker Compose 文件的版本
+version: '3.8'
 
 services:
-  sublink:
+  sublinkx:
+    image: sublinkx:latest
+    container_name: sublinkx
     build:
-      context: .  # 指定 Dockerfile 的上下文（当前目录）
-      dockerfile: Dockerfile  # 指定 Dockerfile 的名称，如果是默认的 "Dockerfile"，可以省略此行
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8000:8000"  # 将容器的 8000 端口映射到主机的 8000 端口
+      - "8000:8000"
     volumes:
-      - .:/app  # 将当前目录挂载到容器的 /app 目录，便于开发时实时更新
+      # 持久化数据目录（生产环境使用）
+      - ./data/db:/app/db
+      - ./data/template:/app/template
+      - ./data/logs:/app/logs
+      # 开发环境可以挂载源码（注释掉用于生产）
+      # - .:/app
     environment:
-      - ENV_VAR_NAME=value  # 可选，您可以在此处设置其他环境变量
-      - TZ=Asia/Shanghai  # 设置时区为 Asia/Shanghai
-    restart: unless-stopped  # 设置容器重启策略
+      - TZ=Asia/Shanghai
+      - GIN_MODE=release  # 生产环境设置为 release，开发环境设置为 debug
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    networks:
+      - sublinkx-network
+
+networks:
+  sublinkx-network:
+    driver: bridge

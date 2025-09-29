@@ -144,18 +144,45 @@ func NodeUpdadte(c *gin.Context) {
 
 // 获取节点列表
 func NodeGet(c *gin.Context) {
-	var ns []models.Node
-	ns, err := models.GetNodeList()
+	// 获取分页参数
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("pageSize", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 {
+		pageSize = 20
+	}
+
+	// 限制最大页面大小
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	// 获取分页数据
+	ns, total, err := models.GetNodeListWithPagination(page, pageSize)
 	if err != nil {
 		c.JSON(500, gin.H{
 			"msg": "node list error",
 		})
 		return
 	}
+
+	// 计算总页数
+	totalPages := (total + int64(pageSize) - 1) / int64(pageSize)
+
 	c.JSON(200, gin.H{
 		"code": "00000",
 		"data": ns,
-		"msg":  "node get",
+		"total": total,
+		"page": page,
+		"pageSize": pageSize,
+		"totalPages": totalPages,
+		"msg": "node get",
 	})
 }
 
@@ -163,16 +190,29 @@ func NodeGet(c *gin.Context) {
 func GroupNodeGet(c *gin.Context) {
 	var Gns []models.GroupNode
 	Gns, err := models.GetGroupNodeList()
-	var data []string
-	for _, g := range Gns {
-		data = append(data, g.Name)
-	}
 	if err != nil {
 		c.JSON(400, gin.H{
 			"msg": err.Error(),
 		})
 		return
 	}
+
+	// 构建返回的分组数据，包含ID、Name和节点数量
+	type GroupInfo struct {
+		ID        int    `json:"id"`
+		Name      string `json:"name"`
+		NodeCount int    `json:"nodeCount"`
+	}
+
+	var data []GroupInfo
+	for _, g := range Gns {
+		data = append(data, GroupInfo{
+			ID:        g.ID,
+			Name:      g.Name,
+			NodeCount: len(g.Nodes),
+		})
+	}
+
 	c.JSON(200, gin.H{
 		"code": "00000",
 		"data": data,
@@ -339,7 +379,7 @@ func NodeDel(c *gin.Context) {
 }
 
 // 删除分组
-func NodesGroup(c *gin.Context) {
+func GroupNodeDel(c *gin.Context) {
 	var gn models.GroupNode
 	id := c.Query("id")
 	if id == "" {
@@ -363,6 +403,69 @@ func NodesGroup(c *gin.Context) {
 	})
 }
 
+// 更新分组
+func GroupNodeUpdate(c *gin.Context) {
+	id := c.PostForm("id")
+	newName := c.PostForm("name")
+
+	if id == "" {
+		c.JSON(400, gin.H{
+			"msg": "id 不能为空",
+		})
+		return
+	}
+
+	if newName == "" {
+		c.JSON(400, gin.H{
+			"msg": "分组名称不能为空",
+		})
+		return
+	}
+
+	idx, _ := strconv.Atoi(id)
+	oldGn := &models.GroupNode{ID: idx}
+	newGn := &models.GroupNode{Name: newName}
+
+	err := oldGn.Update(newGn)
+	if err != nil {
+		c.JSON(400, gin.H{
+			"msg": fmt.Sprintf("更新失败: %s", err.Error()),
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"code": "00000",
+		"msg":  "更新成功",
+	})
+}
+
+// 添加分组
+func GroupNodeAdd(c *gin.Context) {
+	name := c.PostForm("name")
+
+	if name == "" {
+		c.JSON(400, gin.H{
+			"msg": "分组名称不能为空",
+		})
+		return
+	}
+
+	gn := &models.GroupNode{Name: name}
+	err := gn.Add()
+	if err != nil {
+		c.JSON(400, gin.H{
+			"msg": fmt.Sprintf("添加失败: %s", err.Error()),
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"code": "00000",
+		"msg":  "添加成功",
+	})
+}
+
 // 节点统计
 func NodesTotal(c *gin.Context) {
 	var nodes []models.Node
@@ -378,5 +481,40 @@ func NodesTotal(c *gin.Context) {
 		"code": "00000",
 		"data": count,
 		"msg":  "取得节点统计",
+	})
+}
+
+// 根据分组ID获取节点列表
+func GetNodesByGroup(c *gin.Context) {
+	groupID := c.Query("groupId")
+	if groupID == "" {
+		c.JSON(400, gin.H{
+			"msg": "分组ID不能为空",
+		})
+		return
+	}
+
+	id, err := strconv.Atoi(groupID)
+	if err != nil {
+		c.JSON(400, gin.H{
+			"msg": "分组ID格式错误",
+		})
+		return
+	}
+
+	// 查询分组及其关联的节点
+	var groupNode models.GroupNode
+	err = models.DB.Preload("Nodes").Where("id = ?", id).First(&groupNode).Error
+	if err != nil {
+		c.JSON(400, gin.H{
+			"msg": "获取分组节点失败",
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"code": "00000",
+		"data": groupNode.Nodes,
+		"msg":  "获取分组节点成功",
 	})
 }
