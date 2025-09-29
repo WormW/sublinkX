@@ -105,9 +105,6 @@ func ExternalSubscriptionUpdate(c *gin.Context) {
 	if req.UpdateInterval == 0 {
 		req.UpdateInterval = 3600
 	}
-	if req.UserAgent == "" {
-		req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-	}
 
 	oldSubscription := &models.ExternalSubscription{ID: req.ID}
 	newSubscription := &models.ExternalSubscription{

@@ -158,10 +158,12 @@ func GetClash(c *gin.Context) {
 	}
 	// err = sub.Find()
 
-	urls := []string{}
-
 	models.DB.Model(sub).Preload("Nodes").Find(&sub)
 	log.Println("订阅名:", sub.Nodes)
+
+	// 使用节点列表而不是仅仅URL
+	var nodes []models.Node
+
 	for _, v := range sub.Nodes {
 		log.Println("节点信息:", v)
 		log.Println("节点链接:", v.Link)
@@ -169,33 +171,63 @@ func GetClash(c *gin.Context) {
 		// 如果包含多条节点
 		case strings.Contains(v.Link, ","):
 			links := strings.Split(v.Link, ",")
-			urls = append(urls, links...)
+			for _, link := range links {
+				// 创建新节点，使用原节点的名称
+				newNode := models.Node{
+					Name: v.Name,
+					Link: link,
+				}
+				nodes = append(nodes, newNode)
+			}
 			continue
 		//如果是订阅转换
 		case strings.Contains(v.Link, "http://") || strings.Contains(v.Link, "https://"):
 			resp, err := http.Get(v.Link)
 			if err != nil {
 				log.Println(err)
-				return
+				continue
 			}
 			defer resp.Body.Close()
 			body, _ := io.ReadAll(resp.Body)
-			nodes := node.Base64Decode(string(body))
-			links := strings.Split(nodes, "\n")
-			urls = append(urls, links...)
+			nodesStr := node.Base64Decode(string(body))
+			links := strings.Split(nodesStr, "\n")
+			for _, link := range links {
+				if link != "" {
+					// 创建新节点，使用原节点的名称
+					newNode := models.Node{
+						Name: v.Name,
+						Link: link,
+					}
+					nodes = append(nodes, newNode)
+				}
+			}
 		// 默认
 		default:
-			urls = append(urls, v.Link)
+			nodes = append(nodes, v)
 		}
 	}
-	log.Println("urls", urls)
+
+	log.Println("nodes", nodes)
 	var configs node.SqlConfig
 	err = json.Unmarshal([]byte(sub.Config), &configs)
 	if err != nil {
 		c.Writer.WriteString("配置读取错误")
 		return
 	}
-	DecodeClash, err := node.EncodeClash(urls, configs)
+
+	// 将nodes转换为interface{}类型
+	var nodeInterfaces []interface{}
+	for _, n := range nodes {
+		// 创建一个map来存储节点信息
+		nodeMap := make(map[string]interface{})
+		nodeMap["Name"] = n.Name
+		nodeMap["Link"] = n.Link
+		nodeMap["Config"] = n.Config
+		nodeInterfaces = append(nodeInterfaces, nodeMap)
+	}
+
+	// 传递完整的节点信息，而不仅仅是URLs
+	DecodeClash, err := node.EncodeClashWithNodes(nodeInterfaces, configs)
 	if err != nil {
 		c.Writer.WriteString(err.Error())
 		return

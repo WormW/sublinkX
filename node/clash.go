@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -345,6 +346,418 @@ func EncodeClash(urls []string, sqlconfig SqlConfig) ([]byte, error) {
 			proxys = append(proxys, tuicproxy)
 		}
 	}
+	// 生成Clash配置文件
+	return DecodeClash(proxys, sqlconfig.Clash)
+}
+
+// EncodeClashWithNodes 用于生成 Clash 配置文件，使用节点的名称和配置
+func EncodeClashWithNodes(nodes []interface{}, sqlconfig SqlConfig) ([]byte, error) {
+	// 准备代理配置列表
+	var proxys []Proxy
+
+	for _, n := range nodes {
+		// 从interface{}中提取节点信息
+		nodeData := n.(map[string]interface{})
+
+		// 获取节点的名称、链接和配置
+		nodeName := ""
+		if name, ok := nodeData["Name"].(string); ok {
+			nodeName = name
+		}
+
+		link := ""
+		if l, ok := nodeData["Link"].(string); ok {
+			link = l
+		}
+
+		// 检查是否有配置字段
+		if config, ok := nodeData["Config"].(string); ok && config != "" {
+			// 如果有配置，直接使用配置中的信息
+			var proxy map[string]interface{}
+			if err := json.Unmarshal([]byte(config), &proxy); err == nil {
+				// 创建Proxy结构体
+				p := Proxy{}
+
+				// 使用节点的名称
+				if nodeName != "" {
+					p.Name = nodeName
+				} else if name, ok := proxy["name"].(string); ok {
+					p.Name = name
+				}
+
+				// 从配置中提取其他字段
+				if t, ok := proxy["type"].(string); ok {
+					p.Type = t
+				}
+				if server, ok := proxy["server"].(string); ok {
+					p.Server = server
+				}
+				if port, ok := proxy["port"].(float64); ok {
+					p.Port = int(port)
+				} else if port, ok := proxy["port"].(int); ok {
+					p.Port = port
+				}
+				if cipher, ok := proxy["cipher"].(string); ok {
+					p.Cipher = cipher
+				}
+				if password, ok := proxy["password"].(string); ok {
+					p.Password = password
+				}
+				if uuid, ok := proxy["uuid"].(string); ok {
+					p.Uuid = uuid
+				}
+				if alterId, ok := proxy["alterId"].(string); ok {
+					p.AlterId = alterId
+				} else if alterId, ok := proxy["alterId"].(float64); ok {
+					p.AlterId = fmt.Sprintf("%v", alterId)
+				}
+				if network, ok := proxy["network"].(string); ok {
+					p.Network = network
+				}
+				if tls, ok := proxy["tls"].(bool); ok {
+					p.Tls = tls
+				} else if tls, ok := proxy["tls"].(string); ok {
+					p.Tls = tls == "tls" || tls == "true"
+				}
+				if sni, ok := proxy["sni"].(string); ok {
+					p.Sni = sni
+				} else if servername, ok := proxy["servername"].(string); ok {
+					p.Servername = servername
+				}
+				if udp, ok := proxy["udp"].(bool); ok {
+					p.Udp = udp
+				}
+				if skipCertVerify, ok := proxy["skip-cert-verify"].(bool); ok {
+					p.Skip_cert_verify = skipCertVerify
+				}
+				if protocol, ok := proxy["protocol"].(string); ok {
+					p.Protocol = protocol
+				}
+				if obfs, ok := proxy["obfs"].(string); ok {
+					p.Obfs = obfs
+				}
+				if flow, ok := proxy["flow"].(string); ok {
+					p.Flow = flow
+				}
+				if auth, ok := proxy["auth"].(string); ok {
+					p.Auth = auth
+				} else if authStr, ok := proxy["auth_str"].(string); ok {
+					p.Auth_str = authStr
+				}
+
+				// 处理ws-opts
+				if wsOpts, ok := proxy["ws-opts"].(map[string]interface{}); ok {
+					p.Ws_opts = wsOpts
+				}
+
+				// 处理grpc-opts
+				if grpcOpts, ok := proxy["grpc-opts"].(map[string]interface{}); ok {
+					p.Grpc_opts = grpcOpts
+				}
+
+				// 处理reality-opts
+				if realityOpts, ok := proxy["reality-opts"].(map[string]interface{}); ok {
+					p.Reality_opts = realityOpts
+				}
+
+				// 处理alpn
+				if alpn, ok := proxy["alpn"].([]interface{}); ok {
+					for _, a := range alpn {
+						if s, ok := a.(string); ok {
+							p.Alpn = append(p.Alpn, s)
+						}
+					}
+				}
+
+				proxys = append(proxys, p)
+				continue
+			}
+		}
+
+		// 如果没有配置或配置解析失败，从链接解析
+		if link == "" {
+			continue
+		}
+
+		Scheme := strings.Split(link, "://")[0]
+		switch {
+		case Scheme == "ss":
+			ss, err := DecodeSSURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				ss.Name = nodeName
+			}
+			ssproxy := Proxy{
+				Name:             ss.Name,
+				Type:             ss.Type,
+				Server:           ss.Server,
+				Port:             ss.Port,
+				Cipher:           ss.Param.Cipher,
+				Password:         ss.Param.Password,
+				Udp:              sqlconfig.Udp,
+			}
+			proxys = append(proxys, ssproxy)
+		case Scheme == "ssr":
+			ssr, err := DecodeSSRURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				ssr.Qurey.Remarks = nodeName
+			}
+			ssrproxy := Proxy{
+				Name:     ssr.Qurey.Remarks,
+				Type:     ssr.Type,
+				Server:   ssr.Server,
+				Port:     ssr.Port,
+				Cipher:   ssr.Method,
+				Password: ssr.Password,
+				Protocol: ssr.Protocol,
+				Obfs:     ssr.Obfs,
+				Udp:      sqlconfig.Udp,
+			}
+			proxys = append(proxys, ssrproxy)
+		case Scheme == "trojan":
+			trojan, err := DecodeTrojanURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				trojan.Name = nodeName
+			}
+			trojanproxy := Proxy{
+				Name:               trojan.Name,
+				Type:               trojan.Type,
+				Server:             trojan.Hostname,
+				Port:               trojan.Port,
+				Password:           trojan.Password,
+				Sni:                trojan.Query.Sni,
+				Skip_cert_verify:   sqlconfig.Cert,
+				Udp:                sqlconfig.Udp,
+			}
+			proxys = append(proxys, trojanproxy)
+		case Scheme == "vmess":
+			vmess, err := DecodeVMESSURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				vmess.Ps = nodeName
+			}
+
+			// 处理端口类型
+			port := 0
+			switch v := vmess.Port.(type) {
+			case float64:
+				port = int(v)
+			case int:
+				port = v
+			case string:
+				port, _ = strconv.Atoi(v)
+			}
+
+			// 处理alterId类型
+			alterId := ""
+			switch v := vmess.Aid.(type) {
+			case string:
+				alterId = v
+			case float64:
+				alterId = fmt.Sprintf("%v", v)
+			case int:
+				alterId = fmt.Sprintf("%v", v)
+			}
+
+			vproxy := Proxy{
+				Name:               vmess.Ps,
+				Type:               "vmess",
+				Server:             vmess.Add,
+				Port:               port,
+				Uuid:               vmess.Id,
+				AlterId:            alterId,
+				Cipher:             vmess.Scy,
+				Network:            vmess.Net,
+				Tls:                vmess.Tls == "tls",
+				Skip_cert_verify:   sqlconfig.Cert,
+				Udp:                sqlconfig.Udp,
+				Servername:         vmess.Sni,
+			}
+			// 处理WebSocket配置
+			if vmess.Net == "ws" {
+				var wsOpts = make(map[string]interface{})
+				wsOpts["path"] = vmess.Path
+				if vmess.Host != "" {
+					var headers = make(map[string]interface{})
+					headers["Host"] = vmess.Host
+					wsOpts["headers"] = headers
+				}
+				DeleteOpts(wsOpts)
+				if len(wsOpts) > 0 {
+					vproxy.Ws_opts = wsOpts
+				}
+			}
+			// 处理gRPC配置
+			if vmess.Net == "grpc" {
+				var grpcOpts = make(map[string]interface{})
+				grpcOpts["grpc-service-name"] = vmess.Path
+				DeleteOpts(grpcOpts)
+				if len(grpcOpts) > 0 {
+					vproxy.Grpc_opts = grpcOpts
+				}
+			}
+			proxys = append(proxys, vproxy)
+		case Scheme == "vless":
+			vless, err := DecodeVLESSURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				vless.Name = nodeName
+			}
+
+			vlproxy := Proxy{
+				Name:               vless.Name,
+				Type:               "vless",
+				Server:             vless.Server,
+				Port:               vless.Port,
+				Uuid:               vless.Uuid,
+				Network:            vless.Query.Type,
+				Flow:               vless.Query.Flow,
+				Skip_cert_verify:   sqlconfig.Cert,
+				Udp:                sqlconfig.Udp,
+				Tls:                vless.Query.Security == "tls",
+				Servername:         vless.Query.Sni,
+			}
+			// 处理Reality配置
+			if vless.Query.Security == "reality" {
+				var realityOpts = make(map[string]interface{})
+				realityOpts["public-key"] = vless.Query.Pbk
+				realityOpts["short-id"] = vless.Query.Sid
+				DeleteOpts(realityOpts)
+				if len(realityOpts) > 0 {
+					vlproxy.Reality_opts = realityOpts
+				}
+			}
+			// 处理WebSocket配置
+			if vless.Query.Type == "ws" {
+				var wsOpts = make(map[string]interface{})
+				wsOpts["path"] = vless.Query.Path
+				if vless.Query.Host != "" {
+					var headers = make(map[string]interface{})
+					headers["Host"] = vless.Query.Host
+					wsOpts["headers"] = headers
+				}
+				DeleteOpts(wsOpts)
+				if len(wsOpts) > 0 {
+					vlproxy.Ws_opts = wsOpts
+				}
+			}
+			// 处理gRPC配置
+			if vless.Query.Type == "grpc" {
+				var grpcOpts = make(map[string]interface{})
+				grpcOpts["grpc-service-name"] = vless.Query.ServiceName
+				if grpcOpts["grpc-service-name"] == "" {
+					grpcOpts["grpc-service-name"] = vless.Query.Path
+				}
+				DeleteOpts(grpcOpts)
+				if len(grpcOpts) > 0 {
+					vlproxy.Grpc_opts = grpcOpts
+				}
+			}
+			proxys = append(proxys, vlproxy)
+		case Scheme == "hy" || Scheme == "hysteria":
+			hy, err := DecodeHYURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				hy.Name = nodeName
+			}
+			hyproxy := Proxy{
+				Name:             hy.Name,
+				Type:             "hysteria",
+				Server:           hy.Host,
+				Port:             hy.Port,
+				Auth_str:         hy.Auth,
+				Up:               hy.UpMbps,
+				Down:             hy.DownMbps,
+				Peer:             hy.Peer,
+				Alpn:             hy.ALPN,
+				Udp:              sqlconfig.Udp,
+				Skip_cert_verify: sqlconfig.Cert,
+			}
+			proxys = append(proxys, hyproxy)
+		case Scheme == "hy2" || Scheme == "hysteria2":
+			hy2, err := DecodeHY2URL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				hy2.Name = nodeName
+			}
+			hyproxy2 := Proxy{
+				Name:             hy2.Name,
+				Type:             "hysteria2",
+				Server:           hy2.Host,
+				Port:             hy2.Port,
+				Auth_str:         hy2.Auth,
+				Sni:              hy2.Sni,
+				Alpn:             hy2.ALPN,
+				Obfs:             hy2.Obfs,
+				Password:         hy2.Password,
+				Obfs_password:    hy2.ObfsPassword,
+				Udp:              sqlconfig.Udp,
+				Skip_cert_verify: sqlconfig.Cert,
+			}
+			proxys = append(proxys, hyproxy2)
+		case Scheme == "tuic":
+			tuic, err := DecodeTuicURL(link)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			// 使用节点的名称替换解析出的名称
+			if nodeName != "" {
+				tuic.Name = nodeName
+			}
+			disable_sni := false
+			if tuic.Disable_sni == 1 {
+				disable_sni = true
+			}
+			tuicproxy := Proxy{
+				Name:               tuic.Name,
+				Type:               "tuic",
+				Server:             tuic.Host,
+				Port:               tuic.Port,
+				Password:           tuic.Password,
+				Uuid:               tuic.Uuid,
+				Congestion_control: tuic.Congestion_control,
+				Alpn:               tuic.Alpn,
+				Udp_relay_mode:     tuic.Udp_relay_mode,
+				Disable_sni:        disable_sni,
+				Sni:                tuic.Sni,
+				Udp:                sqlconfig.Udp,
+				Skip_cert_verify:   sqlconfig.Cert,
+			}
+			proxys = append(proxys, tuicproxy)
+		}
+	}
+
 	// 生成Clash配置文件
 	return DecodeClash(proxys, sqlconfig.Clash)
 }

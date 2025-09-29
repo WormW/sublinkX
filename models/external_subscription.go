@@ -62,8 +62,8 @@ func (es *ExternalSubscription) Update(newES *ExternalSubscription) error {
 		return errors.New("订阅名称或链接已被其他订阅使用")
 	}
 
-	// 更新记录
-	return DB.Model(es).Where("id = ?", es.ID).Updates(newES).Error
+	// 使用结构体更新，但排除ID字段
+	return DB.Model(es).Where("id = ?", es.ID).Omit("ID", "CreatedAt", "DeletedAt").Updates(newES).Error
 }
 
 // 删除外部订阅

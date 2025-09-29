@@ -90,23 +90,23 @@ func (sub *Subcription) Find() error {
 		return err
 	}
 	// 根据 NodeOrder 字段重新排序 Nodes
-	if sub.NodeOrder != "" && len(sub.Nodes) > 0 {
-		orderedNames := strings.Split(sub.NodeOrder, ",")
-		nodeMap := make(map[string]Node)
-		for _, node := range sub.Nodes {
-			log.Println("node:", node)
-			nodeMap[node.Name] = node
-		}
+	// if sub.NodeOrder != "" && len(sub.Nodes) > 0 {
+	// 	orderedNames := strings.Split(sub.NodeOrder, ",")
+	// 	nodeMap := make(map[string]Node)
+	// 	for _, node := range sub.Nodes {
+	// 		// log.Println("node:", node)
+	// 		nodeMap[node.Name] = node
+	// 	}
 
-		var reorderedNodes []Node
-		for _, name := range orderedNames {
-			trimmedName := strings.TrimSpace(name)
-			if node, ok := nodeMap[trimmedName]; ok {
-				reorderedNodes = append(reorderedNodes, node)
-			}
-		}
-		sub.Nodes = reorderedNodes
-	}
+	// var reorderedNodes []Node
+	// for _, name := range orderedNames {
+	// 	trimmedName := strings.TrimSpace(name)
+	// 	if node, ok := nodeMap[trimmedName]; ok {
+	// 		reorderedNodes = append(reorderedNodes, node)
+	// 	}
+	// }
+	// sub.Nodes = reorderedNodes
+	// }
 
 	return nil
 }
